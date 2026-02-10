@@ -31,6 +31,8 @@ import {
   FileText,
   Mail,
   Phone,
+  PhoneCall,
+  Mic,
   Presentation,
   MessageSquare,
   Users,
@@ -44,6 +46,7 @@ import {
   BarChart3,
   Target,
   Settings,
+  Info,
 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
@@ -178,6 +181,88 @@ function renderMessageContent(content: string) {
 }
 
 // ---------------------------------------------------------------------------
+// Call-specific UI components
+// ---------------------------------------------------------------------------
+
+/** Pulsing "Live Call" banner shown when the current channel is "call" */
+function CallInProgressBanner({ personaName }: { personaName?: string }) {
+  return (
+    <div className="bg-green-50 dark:bg-green-950/30 border-b border-green-200 dark:border-green-800 px-4 py-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="relative flex items-center justify-center">
+            <PhoneCall className="h-5 w-5 text-green-600 dark:text-green-400" />
+            <span className="absolute -top-0.5 -right-0.5 flex h-2.5 w-2.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500" />
+            </span>
+          </div>
+          <div>
+            <div className="text-sm font-semibold text-green-800 dark:text-green-200">
+              Live Call in Progress
+            </div>
+            {personaName && (
+              <div className="text-xs text-green-600 dark:text-green-400">
+                Speaking with {personaName}
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-2 text-xs text-green-600 dark:text-green-400">
+          <Info className="h-3.5 w-3.5" />
+          <span>Type what you would say out loud</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Empty state shown when the call channel has no messages yet */
+function CallEmptyState({ personaName }: { personaName?: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-16 text-muted-foreground gap-4">
+      <div className="relative">
+        <div className="h-20 w-20 rounded-full bg-green-100 dark:bg-green-900/40 flex items-center justify-center">
+          <PhoneCall className="h-10 w-10 text-green-600 dark:text-green-400 animate-pulse" />
+        </div>
+        <span className="absolute top-0 right-0 flex h-4 w-4">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+          <span className="relative inline-flex rounded-full h-4 w-4 bg-green-500" />
+        </span>
+      </div>
+      <div className="text-center space-y-1.5">
+        <p className="text-base font-medium text-foreground">
+          Call Connected{personaName ? ` with ${personaName}` : ""}
+        </p>
+        <p className="text-sm max-w-xs">
+          This is a simulated live call. Type what you would say out loud and the
+          stakeholder will respond in real time.
+        </p>
+      </div>
+      <div className="flex items-center gap-2 bg-muted/50 border rounded-lg px-4 py-2 text-xs">
+        <Mic className="h-3.5 w-3.5 text-green-600" />
+        <span>Start by introducing yourself or responding to the stakeholder</span>
+      </div>
+    </div>
+  );
+}
+
+/** Info callout explaining the call simulation */
+function CallSimulationInfo() {
+  return (
+    <div className="flex items-start gap-2.5 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg px-3 py-2 mx-4 mt-3 mb-1">
+      <Info className="h-4 w-4 text-blue-600 dark:text-blue-400 mt-0.5 shrink-0" />
+      <div className="text-xs text-blue-700 dark:text-blue-300 leading-relaxed">
+        <span className="font-medium">Simulated call:</span> This is a text-based call
+        simulation. Type your spoken responses as if you were on a real phone call. The
+        stakeholder will react to your tone, arguments, and approach just like in a live
+        conversation.
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
@@ -193,6 +278,7 @@ export default function PracticeSession() {
   const [artifactType, setArtifactType] = useState("");
   const [artifactTitle, setArtifactTitle] = useState("");
   const [artifactContent, setArtifactContent] = useState("");
+  const [callInfoDismissed, setCallInfoDismissed] = useState(false);
 
   // Ref for auto-scroll
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -316,6 +402,12 @@ export default function PracticeSession() {
     personaMap.set(sp.persona.id, sp.persona);
   }
 
+  // Call channel detection
+  const isCallChannel = currentChannel === "call";
+  const callMessagesExist = messages.some(
+    (m) => m.channel === "call" && m.senderType === "user"
+  );
+
   // Filtered messages
   const filteredMessages =
     channelFilter === "all"
@@ -412,9 +504,17 @@ export default function PracticeSession() {
                 </span>
               </div>
               <Separator orientation="vertical" className="h-4" />
-              <div className="flex items-center gap-1.5">
+              <div className={`flex items-center gap-1.5 ${
+                isCallChannel ? "text-green-600 dark:text-green-400 font-medium" : ""
+              }`}>
                 <ChannelIcon className="h-4 w-4" />
                 <span>{getChannelLabel(currentChannel)}</span>
+                {isCallChannel && !isCompleted && (
+                  <span className="relative flex h-2 w-2 ml-0.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -433,6 +533,16 @@ export default function PracticeSession() {
           {/* LEFT PANEL - CONVERSATION THREAD                            */}
           {/* ----------------------------------------------------------- */}
           <div className="flex-1 lg:w-2/3 flex flex-col border-r min-h-0">
+            {/* Call-in-progress banner */}
+            {isCallChannel && !isCompleted && (
+              <CallInProgressBanner personaName={activePersona?.name} />
+            )}
+
+            {/* Call simulation info (shown once until dismissed) */}
+            {isCallChannel && !callInfoDismissed && !isCompleted && (
+              <CallSimulationInfo />
+            )}
+
             {/* Messages area */}
             <ScrollArea className="flex-1 p-4">
               <div className="space-y-4 pb-2">
@@ -442,11 +552,17 @@ export default function PracticeSession() {
                   </div>
                 )}
 
-                {!messagesLoading && filteredMessages.length === 0 && (
+                {/* Default empty state for non-call channels */}
+                {!messagesLoading && filteredMessages.length === 0 && !isCallChannel && (
                   <div className="flex flex-col items-center justify-center py-12 text-muted-foreground gap-2">
                     <MessageSquare className="h-8 w-8" />
                     <p className="text-sm">No messages yet. Start the conversation!</p>
                   </div>
+                )}
+
+                {/* Call-specific empty state */}
+                {!messagesLoading && filteredMessages.length === 0 && isCallChannel && (
+                  <CallEmptyState personaName={activePersona?.name} />
                 )}
 
                 {filteredMessages.map((msg) => {
@@ -454,19 +570,33 @@ export default function PracticeSession() {
 
                   // ------ SYSTEM MESSAGE ------
                   if (msg.senderType === "system") {
+                    const isCallSysMsg = msg.channel === "call";
                     return (
                       <div key={msg.id} className="flex justify-center">
-                        <div className="max-w-lg bg-muted/50 border rounded-lg px-4 py-2.5 text-center text-sm text-muted-foreground">
-                          <div className="font-medium text-xs uppercase tracking-wide mb-1 text-muted-foreground/70">
-                            System
+                        <div className={`max-w-lg border rounded-lg px-4 py-2.5 text-center text-sm ${
+                          isCallSysMsg
+                            ? "bg-green-50/80 dark:bg-green-950/30 border-green-200 dark:border-green-800 text-green-800 dark:text-green-200"
+                            : "bg-muted/50 text-muted-foreground"
+                        }`}>
+                          <div className={`font-medium text-xs uppercase tracking-wide mb-1 ${
+                            isCallSysMsg
+                              ? "text-green-600 dark:text-green-400 flex items-center justify-center gap-1.5"
+                              : "text-muted-foreground/70"
+                          }`}>
+                            {isCallSysMsg && <PhoneCall className="h-3 w-3" />}
+                            {isCallSysMsg ? "Call Started" : "System"}
                           </div>
                           <div className="leading-relaxed">
                             {renderMessageContent(msg.content)}
                           </div>
-                          <div className="flex items-center justify-center gap-2 mt-2 text-xs text-muted-foreground/50">
+                          <div className={`flex items-center justify-center gap-2 mt-2 text-xs ${
+                            isCallSysMsg ? "text-green-500/70 dark:text-green-500/50" : "text-muted-foreground/50"
+                          }`}>
                             <Clock className="h-3 w-3" />
                             <span>{formatTimestamp(msg.timestamp)}</span>
-                            <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                            <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${
+                              isCallSysMsg ? "border-green-300 dark:border-green-700 text-green-700 dark:text-green-400" : ""
+                            }`}>
                               <ChannelBadgeIcon className="h-2.5 w-2.5 mr-1" />
                               {getChannelLabel(msg.channel)}
                             </Badge>
@@ -478,10 +608,21 @@ export default function PracticeSession() {
 
                   // ------ USER MESSAGE ------
                   if (msg.senderType === "user") {
+                    const isCallMsg = msg.channel === "call";
                     return (
                       <div key={msg.id} className="flex justify-end">
                         <div className="max-w-[75%] md:max-w-[60%]">
-                          <div className="bg-primary text-primary-foreground rounded-2xl rounded-br-md px-4 py-2.5">
+                          {isCallMsg && (
+                            <div className="flex items-center justify-end gap-1.5 mb-1 text-xs text-green-600 dark:text-green-400 font-medium">
+                              <Mic className="h-3 w-3" />
+                              <span>You said:</span>
+                            </div>
+                          )}
+                          <div className={`rounded-2xl rounded-br-md px-4 py-2.5 ${
+                            isCallMsg
+                              ? "bg-green-600 text-white dark:bg-green-700"
+                              : "bg-primary text-primary-foreground"
+                          }`}>
                             <div className="text-sm leading-relaxed whitespace-pre-wrap">
                               {renderMessageContent(msg.content)}
                             </div>
@@ -490,7 +631,9 @@ export default function PracticeSession() {
                             <span>{msg.senderName}</span>
                             <Clock className="h-3 w-3" />
                             <span>{formatTimestamp(msg.timestamp)}</span>
-                            <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                            <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${
+                              isCallMsg ? "border-green-300 dark:border-green-700 text-green-700 dark:text-green-400" : ""
+                            }`}>
                               <ChannelBadgeIcon className="h-2.5 w-2.5 mr-1" />
                               {getChannelLabel(msg.channel)}
                             </Badge>
@@ -504,21 +647,39 @@ export default function PracticeSession() {
                   const persona = msg.personaId ? personaMap.get(msg.personaId) : null;
                   const initials = persona?.avatarInitials ?? msg.senderName.slice(0, 2).toUpperCase();
                   const avatarColor = persona?.avatarColor ?? "#6b7280";
+                  const isCallMsg = msg.channel === "call";
 
                   return (
                     <div key={msg.id} className="flex justify-start gap-3">
                       {/* Avatar */}
                       <div
-                        className="h-9 w-9 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0 mt-1"
+                        className="h-9 w-9 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0 mt-1 relative"
                         style={{ backgroundColor: avatarColor }}
                       >
                         {initials}
+                        {isCallMsg && (
+                          <span className="absolute -bottom-0.5 -right-0.5 flex h-3 w-3">
+                            <Phone className="h-3 w-3 text-green-600 dark:text-green-400 bg-white dark:bg-gray-900 rounded-full p-0.5" />
+                          </span>
+                        )}
                       </div>
                       <div className="max-w-[75%] md:max-w-[60%]">
-                        <div className="bg-card border rounded-2xl rounded-bl-md px-4 py-2.5">
-                          <div className="text-xs font-semibold mb-1 text-foreground">
-                            {msg.senderName}
+                        {isCallMsg && (
+                          <div className="flex items-center gap-1.5 mb-1 text-xs text-green-600 dark:text-green-400 font-medium">
+                            <Phone className="h-3 w-3" />
+                            <span>{msg.senderName} says:</span>
                           </div>
+                        )}
+                        <div className={`rounded-2xl rounded-bl-md px-4 py-2.5 ${
+                          isCallMsg
+                            ? "bg-green-50 dark:bg-green-950/40 border border-green-200 dark:border-green-800"
+                            : "bg-card border"
+                        }`}>
+                          {!isCallMsg && (
+                            <div className="text-xs font-semibold mb-1 text-foreground">
+                              {msg.senderName}
+                            </div>
+                          )}
                           <div className="text-sm leading-relaxed whitespace-pre-wrap text-foreground">
                             {renderMessageContent(msg.content)}
                           </div>
@@ -526,7 +687,9 @@ export default function PracticeSession() {
                         <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
                           <Clock className="h-3 w-3" />
                           <span>{formatTimestamp(msg.timestamp)}</span>
-                          <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${
+                            isCallMsg ? "border-green-300 dark:border-green-700 text-green-700 dark:text-green-400" : ""
+                          }`}>
                             <ChannelBadgeIcon className="h-2.5 w-2.5 mr-1" />
                             {getChannelLabel(msg.channel)}
                           </Badge>
@@ -542,20 +705,42 @@ export default function PracticeSession() {
             </ScrollArea>
 
             {/* Message input area */}
-            <div className="border-t bg-card p-3 md:p-4">
+            <div className={`border-t p-3 md:p-4 ${
+              isCallChannel && !isCompleted
+                ? "bg-green-50/50 dark:bg-green-950/20 border-green-200 dark:border-green-800"
+                : "bg-card"
+            }`}>
               {isCompleted ? (
                 <div className="text-center text-sm text-muted-foreground py-2">
-                  This session is completed. No more messages can be sent.
+                  {isCallChannel ? "Call ended. No more messages can be sent." : "This session is completed. No more messages can be sent."}
                 </div>
               ) : (
                 <div className="flex items-end gap-2">
+                  {isCallChannel && (
+                    <div className="flex items-center justify-center h-10 w-10 shrink-0">
+                      <Mic className="h-5 w-5 text-green-600 dark:text-green-400" />
+                    </div>
+                  )}
                   <Textarea
-                    placeholder={`Type your message (${getChannelLabel(currentChannel)} channel)...`}
+                    placeholder={
+                      isCallChannel
+                        ? "What would you say next? (Type your spoken response...)"
+                        : `Type your message (${getChannelLabel(currentChannel)} channel)...`
+                    }
                     value={messageInput}
-                    onChange={(e) => setMessageInput(e.target.value)}
+                    onChange={(e) => {
+                      setMessageInput(e.target.value);
+                      if (isCallChannel && !callInfoDismissed) {
+                        setCallInfoDismissed(true);
+                      }
+                    }}
                     onKeyDown={handleKeyDown}
                     rows={2}
-                    className="resize-none flex-1 min-h-[2.5rem]"
+                    className={`resize-none flex-1 min-h-[2.5rem] ${
+                      isCallChannel
+                        ? "border-green-300 dark:border-green-700 focus-visible:ring-green-500"
+                        : ""
+                    }`}
                     disabled={sendMessageMutation.isPending}
                   />
                   <Tooltip>
@@ -566,6 +751,7 @@ export default function PracticeSession() {
                         disabled={
                           !messageInput.trim() || sendMessageMutation.isPending
                         }
+                        className={isCallChannel ? "bg-green-600 hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-600" : ""}
                       >
                         {sendMessageMutation.isPending ? (
                           <Loader2 className="h-4 w-4 animate-spin" />
@@ -574,7 +760,7 @@ export default function PracticeSession() {
                         )}
                       </Button>
                     </TooltipTrigger>
-                    <TooltipContent>Send message</TooltipContent>
+                    <TooltipContent>{isCallChannel ? "Speak (send response)" : "Send message"}</TooltipContent>
                   </Tooltip>
                 </div>
               )}
