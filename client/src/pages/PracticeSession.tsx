@@ -47,6 +47,8 @@ import {
   Target,
   Settings,
   Info,
+  BookOpen,
+  HelpCircle,
 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
@@ -99,7 +101,8 @@ interface Message {
   senderName: string;
   content: string;
   channel: string;
-  timestamp: string;
+  createdAt: string;
+  step: number;
   personaId?: number | null;
 }
 
@@ -109,7 +112,7 @@ interface Artifact {
   type: string;
   title: string;
   content: string;
-  submittedAt: string;
+  createdAt: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -257,6 +260,208 @@ function CallSimulationInfo() {
         simulation. Type your spoken responses as if you were on a real phone call. The
         stakeholder will react to your tone, arguments, and approach just like in a live
         conversation.
+      </div>
+    </div>
+  );
+}
+
+/** Scenario briefing panel shown at the start of a session */
+function ScenarioBriefingPanel({
+  scenario,
+  activePersona,
+  activeRole,
+  currentChannel,
+  scenarioPersonas,
+}: {
+  scenario: Scenario;
+  activePersona?: Persona;
+  activeRole?: string;
+  currentChannel: string;
+  scenarioPersonas: ScenarioPersona[];
+}) {
+  const channelLabel = getChannelLabel(currentChannel);
+
+  return (
+    <div className="mx-4 mt-4 mb-2 space-y-3">
+      {/* Briefing Card */}
+      <div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/40 dark:to-indigo-950/30 border border-blue-200 dark:border-blue-800 rounded-xl p-5">
+        <div className="flex items-start gap-3 mb-4">
+          <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/50">
+            <BookOpen className="h-5 w-5 text-blue-700 dark:text-blue-300" />
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-blue-900 dark:text-blue-100">
+              Scenario Briefing
+            </h3>
+            <p className="text-xs text-blue-700 dark:text-blue-300 mt-0.5">
+              Read this before you begin — your role, objective, and who you'll be speaking with.
+            </p>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          {/* Your Role & Objective */}
+          <div className="bg-white/60 dark:bg-white/5 rounded-lg p-3 space-y-2">
+            <div className="text-xs font-semibold text-blue-800 dark:text-blue-200 uppercase tracking-wide">
+              Your Role
+            </div>
+            <p className="text-sm text-foreground leading-relaxed">
+              You are stepping into the role of <span className="font-semibold">{scenario.title.includes("Biopharma") ? "Agency Account Lead at Horizon Intelligence" : scenario.title.includes("Enterprise") ? "Senior Account Executive at Velocitas" : "Account Executive at DataShield Analytics"}</span>. Your goal is to navigate this {scenario.description.toLowerCase().includes("sell") ? "sales engagement" : "scenario"} by communicating with stakeholders across multiple channels.
+            </p>
+          </div>
+
+          {/* Stakeholders */}
+          {scenarioPersonas.length > 0 && (
+            <div className="bg-white/60 dark:bg-white/5 rounded-lg p-3 space-y-2">
+              <div className="text-xs font-semibold text-blue-800 dark:text-blue-200 uppercase tracking-wide">
+                Stakeholders You'll Meet
+              </div>
+              <div className="space-y-2">
+                {scenarioPersonas.map((sp) => (
+                  <div key={sp.id} className="flex items-center gap-2.5">
+                    <div
+                      className="h-7 w-7 rounded-full flex items-center justify-center text-white text-[10px] font-bold shrink-0"
+                      style={{ backgroundColor: sp.persona.avatarColor }}
+                    >
+                      {sp.persona.avatarInitials}
+                    </div>
+                    <div className="min-w-0">
+                      <span className="text-sm font-medium text-foreground">
+                        {sp.persona.name}
+                      </span>
+                      <span className="text-xs text-muted-foreground ml-1.5">
+                        — {sp.persona.role}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Required artifacts */}
+          {scenario.requiredArtifacts.length > 0 && (
+            <div className="bg-white/60 dark:bg-white/5 rounded-lg p-3 space-y-2">
+              <div className="text-xs font-semibold text-blue-800 dark:text-blue-200 uppercase tracking-wide">
+                Required Deliverables
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {scenario.requiredArtifacts.map((art) => (
+                  <Badge key={art} variant="secondary" className="text-xs">
+                    {ARTIFACT_TYPES[art] ?? art}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* How It Works Card */}
+      <div className="bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/40 dark:to-teal-950/30 border border-emerald-200 dark:border-emerald-800 rounded-xl p-5">
+        <div className="flex items-start gap-3 mb-3">
+          <div className="p-2 rounded-lg bg-emerald-100 dark:bg-emerald-900/50">
+            <HelpCircle className="h-5 w-5 text-emerald-700 dark:text-emerald-300" />
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-emerald-900 dark:text-emerald-100">
+              How This Simulation Works
+            </h3>
+          </div>
+        </div>
+
+        <div className="space-y-2.5 text-sm text-foreground">
+          <div className="flex items-start gap-2.5">
+            <div className="h-5 w-5 rounded-full bg-emerald-200 dark:bg-emerald-800 flex items-center justify-center text-[10px] font-bold text-emerald-800 dark:text-emerald-200 shrink-0 mt-0.5">
+              1
+            </div>
+            <p className="leading-relaxed">
+              <span className="font-medium">Type your message</span> in the text box below — you're starting on the <Badge variant="outline" className="text-xs mx-0.5 py-0">{channelLabel}</Badge> channel.
+              {activePersona && (
+                <> You'll be speaking with <span className="font-medium">{activePersona.name}</span>.</>
+              )}
+            </p>
+          </div>
+          <div className="flex items-start gap-2.5">
+            <div className="h-5 w-5 rounded-full bg-emerald-200 dark:bg-emerald-800 flex items-center justify-center text-[10px] font-bold text-emerald-800 dark:text-emerald-200 shrink-0 mt-0.5">
+              2
+            </div>
+            <p className="leading-relaxed">
+              <span className="font-medium">The stakeholder will respond</span> based on their personality, role, and your approach. Adapt your tone and strategy.
+            </p>
+          </div>
+          <div className="flex items-start gap-2.5">
+            <div className="h-5 w-5 rounded-full bg-emerald-200 dark:bg-emerald-800 flex items-center justify-center text-[10px] font-bold text-emerald-800 dark:text-emerald-200 shrink-0 mt-0.5">
+              3
+            </div>
+            <p className="leading-relaxed">
+              <span className="font-medium">Advance through steps</span> using the footer controls. Each step may change the channel and introduce a new stakeholder.
+            </p>
+          </div>
+          <div className="flex items-start gap-2.5">
+            <div className="h-5 w-5 rounded-full bg-emerald-200 dark:bg-emerald-800 flex items-center justify-center text-[10px] font-bold text-emerald-800 dark:text-emerald-200 shrink-0 mt-0.5">
+              4
+            </div>
+            <p className="leading-relaxed">
+              <span className="font-medium">Submit artifacts</span> (one-pagers, emails, etc.) using the panel on the right as you progress through the engagement.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Example conversation preview */}
+      <div className="bg-muted/30 border border-border rounded-xl p-4">
+        <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-1.5">
+          <MessageSquare className="h-3.5 w-3.5" />
+          Example Exchange
+        </div>
+        <div className="space-y-3">
+          {/* Example user message */}
+          <div className="flex justify-end">
+            <div className="max-w-[80%]">
+              <div className="rounded-2xl rounded-br-md px-3 py-2 bg-primary/80 text-primary-foreground text-xs leading-relaxed">
+                Hi {activePersona?.name?.split(" ")[0] ?? "there"}, thank you for making time. I wanted to reach out about how we can help with your {scenario.title.toLowerCase().includes("biopharma") ? "intelligence and monitoring needs" : scenario.title.toLowerCase().includes("enterprise") ? "pipeline visibility challenges" : "risk intelligence needs"}...
+              </div>
+              <div className="text-right text-[10px] text-muted-foreground mt-0.5">You</div>
+            </div>
+          </div>
+          {/* Example persona response */}
+          {activePersona && (
+            <div className="flex justify-start gap-2">
+              <div
+                className="h-6 w-6 rounded-full flex items-center justify-center text-white text-[9px] font-bold shrink-0 mt-1"
+                style={{ backgroundColor: activePersona.avatarColor }}
+              >
+                {activePersona.avatarInitials}
+              </div>
+              <div className="max-w-[80%]">
+                <div className="rounded-2xl rounded-bl-md px-3 py-2 bg-card border text-xs leading-relaxed">
+                  <div className="font-semibold text-foreground mb-0.5 text-[10px]">{activePersona.name}</div>
+                  {activePersona.personaType === "cooperative"
+                    ? "Thanks for reaching out! I've been looking forward to this conversation. I think there's real potential here, but I'll need some concrete deliverables to take to the leadership team..."
+                    : activePersona.personaType === "difficult_skeptical"
+                      ? "Appreciate you reaching out. Before we go further, I want to understand exactly what this would cost and what problem it solves that we can't handle internally..."
+                      : "Interesting. I have some questions about your methodology and data sources. Can you walk me through how your process works in detail?"
+                  }
+                </div>
+                <div className="text-[10px] text-muted-foreground mt-0.5">{activePersona.name}</div>
+              </div>
+            </div>
+          )}
+        </div>
+        <div className="text-center mt-3">
+          <p className="text-xs text-muted-foreground italic">
+            This is an example. Your actual conversation will vary based on your approach.
+          </p>
+        </div>
+      </div>
+
+      {/* CTA */}
+      <div className="text-center py-2">
+        <div className="inline-flex items-center gap-2 bg-primary/10 text-primary rounded-full px-4 py-2 text-sm font-medium">
+          <ArrowRight className="h-4 w-4" />
+          Type your opening message below to begin the simulation
+        </div>
       </div>
     </div>
   );
@@ -552,11 +757,22 @@ export default function PracticeSession() {
                   </div>
                 )}
 
-                {/* Default empty state for non-call channels */}
-                {!messagesLoading && filteredMessages.length === 0 && !isCallChannel && (
+                {/* Briefing panel shown when no user messages exist yet */}
+                {!messagesLoading && !isCallChannel && !filteredMessages.some(m => m.senderType === "user") && scenario && (
+                  <ScenarioBriefingPanel
+                    scenario={scenario}
+                    activePersona={activePersona}
+                    activeRole={activeScenarioPersona?.roleInScenario}
+                    currentChannel={currentChannel}
+                    scenarioPersonas={scenarioPersonas}
+                  />
+                )}
+
+                {/* Default empty state for non-call channels when filtering a specific channel with no messages */}
+                {!messagesLoading && filteredMessages.length === 0 && !isCallChannel && messages.some(m => m.senderType === "user") && (
                   <div className="flex flex-col items-center justify-center py-12 text-muted-foreground gap-2">
                     <MessageSquare className="h-8 w-8" />
-                    <p className="text-sm">No messages yet. Start the conversation!</p>
+                    <p className="text-sm">No messages in this channel yet.</p>
                   </div>
                 )}
 
@@ -593,7 +809,7 @@ export default function PracticeSession() {
                             isCallSysMsg ? "text-green-500/70 dark:text-green-500/50" : "text-muted-foreground/50"
                           }`}>
                             <Clock className="h-3 w-3" />
-                            <span>{formatTimestamp(msg.timestamp)}</span>
+                            <span>{formatTimestamp(msg.createdAt)}</span>
                             <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${
                               isCallSysMsg ? "border-green-300 dark:border-green-700 text-green-700 dark:text-green-400" : ""
                             }`}>
@@ -630,7 +846,7 @@ export default function PracticeSession() {
                           <div className="flex items-center justify-end gap-2 mt-1 text-xs text-muted-foreground">
                             <span>{msg.senderName}</span>
                             <Clock className="h-3 w-3" />
-                            <span>{formatTimestamp(msg.timestamp)}</span>
+                            <span>{formatTimestamp(msg.createdAt)}</span>
                             <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${
                               isCallMsg ? "border-green-300 dark:border-green-700 text-green-700 dark:text-green-400" : ""
                             }`}>
@@ -686,7 +902,7 @@ export default function PracticeSession() {
                         </div>
                         <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
                           <Clock className="h-3 w-3" />
-                          <span>{formatTimestamp(msg.timestamp)}</span>
+                          <span>{formatTimestamp(msg.createdAt)}</span>
                           <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${
                             isCallMsg ? "border-green-300 dark:border-green-700 text-green-700 dark:text-green-400" : ""
                           }`}>
@@ -1043,7 +1259,7 @@ export default function PracticeSession() {
                                   {ARTIFACT_TYPES[art.type] ?? art.type}
                                 </Badge>
                                 <span className="text-xs text-muted-foreground">
-                                  {formatTimestamp(art.submittedAt)}
+                                  {formatTimestamp(art.createdAt)}
                                 </span>
                               </div>
                             </div>
