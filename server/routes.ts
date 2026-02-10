@@ -130,15 +130,46 @@ export async function registerRoutes(
       const scenario = await storage.getScenario(session.scenarioId);
 
       if (scenario) {
-        // Create initial briefing message
+        const firstChannel = (scenario.channels as string[])[0] || "email";
+
+        // Create initial briefing system message
         await storage.createMessage({
           sessionId: session.id,
-          channel: "email",
+          channel: firstChannel as any,
           senderType: "system",
           senderName: "System",
-          content: scenario.briefing,
+          content: `**Welcome to your practice session: ${scenario.title}**\n\nYou are starting on the **${firstChannel === "email" ? "Email" : firstChannel === "call" ? "Call" : firstChannel.replace(/_/g, " ")}** channel. Read the briefing panel above, then type your opening message to begin.`,
           step: 0,
         });
+
+        // Generate an initial persona greeting so the conversation isn't empty
+        try {
+          const firstPersona = await getActivePersonaForStep(scenario.id, 1);
+          if (firstPersona) {
+            const personaResult = await executePersonaResponseStep(
+              session.id,
+              scenario.id,
+              firstPersona.personaId,
+              firstPersona.persona.personaType,
+              "initial outreach",
+              firstChannel,
+              0,
+            );
+
+            await storage.createMessage({
+              sessionId: session.id,
+              channel: firstChannel as any,
+              senderType: "persona",
+              senderName: personaResult.personaName,
+              personaId: firstPersona.personaId,
+              content: personaResult.response,
+              step: 0,
+            });
+          }
+        } catch (e) {
+          // Persona greeting is non-blocking; session still works without it
+          console.error("Initial persona greeting error (non-blocking):", e);
+        }
 
         // Create a bilko-flow workflow run for this session
         try {
