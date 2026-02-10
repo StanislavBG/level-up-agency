@@ -3,12 +3,23 @@ import type { Server } from "http";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { seedDatabase } from "./seed";
-import { generatePersonaResponse, getActivePersonaForStep, generateChannelTransitionMessage } from "./persona-engine";
+import {
+  getBilkoContext,
+  executePersonaResponseStep,
+  executeChannelTransitionStep,
+  executeAssessmentStep,
+  getActivePersonaForStep,
+  createScenarioRun,
+} from "./workflow-engine";
 
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+
+  // Initialize bilko-flow context on startup (registers step handlers)
+  getBilkoContext();
+
   // ─── Greeting (backward compat) ──────────────────────────────────────────
   app.get(api.greeting.get.path, async (_req, res) => {
     res.json({ message: "Work Skills OS" });
@@ -109,7 +120,6 @@ export async function registerRoutes(
     const session = await storage.getSession(id);
     if (!session) return res.status(404).json({ message: "Session not found" });
 
-    // Also get scenario details
     const scenario = await storage.getScenario(session.scenarioId);
     res.json({ ...session, scenario });
   });
@@ -129,6 +139,14 @@ export async function registerRoutes(
           content: scenario.briefing,
           step: 0,
         });
+
+        // Create a bilko-flow workflow run for this session
+        try {
+          await createScenarioRun(scenario.id, session.id);
+        } catch (e) {
+          // bilko-flow run creation is non-blocking; log but don't fail
+          console.error("bilko-flow run creation error (non-blocking):", e);
+        }
       }
 
       res.status(201).json(session);
@@ -145,7 +163,7 @@ export async function registerRoutes(
     res.json(session);
   });
 
-  // ─── Messages ────────────────────────────────────────────────────────────
+  // ─── Messages (bilko-flow: persona response via custom.persona-response step handler) ─
   app.get("/api/sessions/:sessionId/messages", async (req, res) => {
     const sessionId = parseInt(req.params.sessionId);
     if (isNaN(sessionId)) return res.status(400).json({ message: "Invalid session ID" });
@@ -181,29 +199,29 @@ export async function registerRoutes(
 
       const currentStep = session.status === "briefing" ? 1 : session.currentStep;
 
-      // Get active persona for this step
+      // Get active persona for this step (shared helper from workflow-engine)
       const activePersona = await getActivePersonaForStep(scenario.id, currentStep);
 
       let personaMessage = null;
       if (activePersona) {
-        const allMessages = await storage.getMessages(sessionId);
-        const responseContent = await generatePersonaResponse({
-          session,
-          scenario,
-          persona: activePersona.persona,
-          messages: allMessages,
-          userMessage: req.body.content,
-          channel: req.body.channel || session.currentChannel,
-          step: currentStep,
-        });
+        // Execute persona response via bilko-flow custom.persona-response step handler
+        const personaResult = await executePersonaResponseStep(
+          sessionId,
+          scenario.id,
+          activePersona.personaId,
+          activePersona.persona.personaType,
+          req.body.content,
+          req.body.channel || session.currentChannel,
+          currentStep,
+        );
 
         personaMessage = await storage.createMessage({
           sessionId,
           channel: req.body.channel || session.currentChannel,
           senderType: "persona",
-          senderName: activePersona.persona.name,
+          senderName: personaResult.personaName,
           personaId: activePersona.personaId,
-          content: responseContent,
+          content: personaResult.response,
           step: currentStep,
         });
       }
@@ -226,7 +244,7 @@ export async function registerRoutes(
     }
   });
 
-  // ─── Advance Step ────────────────────────────────────────────────────────
+  // ─── Advance Step (bilko-flow: channel transition via custom.channel-transition step handler) ─
   app.post("/api/sessions/:sessionId/advance", async (req, res) => {
     const sessionId = parseInt(req.params.sessionId);
     if (isNaN(sessionId)) return res.status(400).json({ message: "Invalid session ID" });
@@ -241,7 +259,6 @@ export async function registerRoutes(
     const nextStep = session.currentStep + 1;
 
     if (nextStep > scenario.estimatedSteps) {
-      // Move to assessment
       await storage.updateSession(sessionId, {
         status: "awaiting_review",
         currentStep: nextStep,
@@ -256,8 +273,9 @@ export async function registerRoutes(
       currentChannel: nextChannel,
     });
 
-    // Create transition message
-    const transitionMsg = generateChannelTransitionMessage(nextChannel, nextStep, scenario);
+    // Execute channel transition via bilko-flow custom.channel-transition step handler
+    const transitionMsg = await executeChannelTransitionStep(nextChannel, nextStep);
+
     await storage.createMessage({
       sessionId,
       channel: nextChannel,
@@ -267,7 +285,6 @@ export async function registerRoutes(
       step: nextStep,
     });
 
-    // Check if a new persona should be introduced
     const activePersona = await getActivePersonaForStep(scenario.id, nextStep);
 
     res.json({
@@ -313,7 +330,7 @@ export async function registerRoutes(
     res.json(artifact);
   });
 
-  // ─── Assessments ─────────────────────────────────────────────────────────
+  // ─── Assessments (bilko-flow: scoring via custom.assessment step handler) ─
   app.get("/api/sessions/:sessionId/assessment", async (req, res) => {
     const sessionId = parseInt(req.params.sessionId);
     if (isNaN(sessionId)) return res.status(400).json({ message: "Invalid session ID" });
@@ -329,90 +346,28 @@ export async function registerRoutes(
     const session = await storage.getSession(sessionId);
     if (!session) return res.status(404).json({ message: "Session not found" });
 
-    // Generate automated assessment based on session data
-    const messages = await storage.getMessages(sessionId);
-    const artifacts = await storage.getArtifacts(sessionId);
-
-    const userMessages = messages.filter(m => m.senderType === "user");
-    const hasArtifacts = artifacts.length > 0;
-    const uniqueChannels = new Set(messages.map(m => m.channel));
-
-    // Scoring based on engagement quality
-    const messageDepth = Math.min(userMessages.length * 8, 100);
-    const artifactBonus = hasArtifacts ? 15 : 0;
-    const channelDiversity = Math.min(uniqueChannels.size * 12, 100);
-
-    const scores = {
-      persuasiveness: Math.min(Math.round(messageDepth * 0.8 + Math.random() * 20), 100),
-      objectionHandling: Math.min(Math.round(messageDepth * 0.7 + Math.random() * 25), 100),
-      interpersonalVibe: Math.min(Math.round(messageDepth * 0.75 + Math.random() * 20), 100),
-      writtenCommunication: Math.min(Math.round((messageDepth + artifactBonus) * 0.8 + Math.random() * 15), 100),
-      artifactQuality: hasArtifacts ? Math.min(Math.round(60 + Math.random() * 35), 100) : 0,
-      sequencingStrategy: Math.min(Math.round(channelDiversity * 0.8 + Math.random() * 20), 100),
-      decisionQuality: Math.min(Math.round(messageDepth * 0.65 + Math.random() * 30), 100),
-    };
-
-    const overallScore = Math.round(
-      Object.values(scores).reduce((a, b) => a + b, 0) / Object.keys(scores).length
-    );
-
-    const recommendation = overallScore >= 70 ? "pass" : overallScore >= 50 ? "needs_improvement" : "fail";
-
-    const frictionPoints = [];
-    if (!hasArtifacts) {
-      frictionPoints.push({
-        area: "Artifact Production",
-        description: "No artifacts were submitted during the session. Required deliverables (one-pager, email recap, risk register) were not produced.",
-        severity: "high" as const,
-        channel: "all",
-      });
-    }
-    if (userMessages.length < 3) {
-      frictionPoints.push({
-        area: "Engagement Depth",
-        description: "Limited engagement with stakeholders. More substantive interactions would demonstrate stronger consultative selling skills.",
-        severity: "medium" as const,
-        channel: "all",
-      });
-    }
-    if (uniqueChannels.size < 2) {
-      frictionPoints.push({
-        area: "Channel Diversity",
-        description: "Engagement was limited to a single channel. Multi-channel sequencing is important for demonstrating full workflow competency.",
-        severity: "medium" as const,
-        channel: messages[0]?.channel || "email",
-      });
-    }
-
-    const strengths = [];
-    if (userMessages.length >= 5) strengths.push("Strong engagement depth across multiple touchpoints");
-    if (hasArtifacts) strengths.push("Produced required deliverables demonstrating documentation discipline");
-    if (uniqueChannels.size >= 3) strengths.push("Effective multi-channel sequencing and stakeholder management");
-
-    const areasForImprovement = [];
-    if (!hasArtifacts) areasForImprovement.push("Produce all required artifacts as first-class deliverables");
-    if (userMessages.length < 5) areasForImprovement.push("Deepen engagement with more substantive stakeholder interactions");
-    if (scores.objectionHandling < 60) areasForImprovement.push("Strengthen objection handling with more specific, evidence-based responses");
-
     try {
+      // Execute assessment via bilko-flow custom.assessment step handler
+      const assessmentResult = await executeAssessmentStep(sessionId);
+
       const assessment = await storage.createAssessment({
         sessionId,
         status: "completed",
-        overallScore,
-        recommendation,
-        summary: `Session completed with an overall score of ${overallScore}/100. ${recommendation === "pass" ? "The candidate demonstrated competent performance across the evaluated dimensions." : recommendation === "needs_improvement" ? "The candidate showed potential but needs improvement in key areas." : "The candidate did not meet the minimum performance threshold."} ${userMessages.length} user messages across ${uniqueChannels.size} channel(s). ${artifacts.length} artifact(s) submitted.`,
-        scores,
-        frictionPoints,
-        strengths,
-        areasForImprovement,
+        overallScore: assessmentResult.overallScore,
+        recommendation: assessmentResult.recommendation,
+        summary: assessmentResult.summary,
+        scores: assessmentResult.scores as any,
+        frictionPoints: assessmentResult.frictionPoints as any,
+        strengths: assessmentResult.strengths,
+        areasForImprovement: assessmentResult.areasForImprovement,
         hitlRequired: true,
       });
 
-      // Update session status
       await storage.updateSession(sessionId, { status: "completed", completedAt: new Date() });
 
       res.status(201).json(assessment);
     } catch (error: any) {
+      console.error("Assessment generation error:", error);
       res.status(400).json({ message: error.message });
     }
   });
