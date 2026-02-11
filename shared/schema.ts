@@ -251,6 +251,80 @@ export const insertArtifactSchema = createInsertSchema(artifacts).omit({ id: tru
 export const insertAssessmentSchema = createInsertSchema(assessments).omit({ id: true, createdAt: true, completedAt: true });
 export const insertUserConfigSchema = createInsertSchema(userConfigs).omit({ id: true, updatedAt: true });
 
+// ─── Route-level validation schemas ─────────────────────────────────────────
+
+/** Valid channel values for runtime validation */
+const channelValues = ["email", "call", "deck_review", "follow_up", "internal_coaching", "meeting"] as const;
+
+/** POST /api/sessions/:sessionId/messages — user-submitted message body */
+export const createMessageBodySchema = z.object({
+  content: z.string().min(1, "Message content is required").max(10000, "Message content too long"),
+  channel: z.enum(channelValues).optional(),
+});
+
+/** POST /api/sessions/:sessionId/artifacts — artifact creation (sessionId from URL) */
+export const createArtifactBodySchema = z.object({
+  type: z.enum(["one_pager", "email_recap", "risk_register", "meeting_agenda", "deck", "newsletter_brief", "custom"]),
+  title: z.string().min(1, "Artifact title is required").max(500),
+  content: z.string().min(1, "Artifact content is required"),
+  version: z.number().int().positive().optional(),
+  status: z.enum(["draft", "submitted", "under_review", "revision_requested", "approved"]).optional(),
+  templateId: z.number().int().positive().nullable().optional(),
+  feedback: z.string().nullable().optional(),
+  score: z.number().int().min(0).max(100).nullable().optional(),
+  gradingDetails: z.object({
+    clarity: z.number(),
+    completeness: z.number(),
+    accuracy: z.number(),
+    toneAppropriateness: z.number(),
+    templateConformance: z.number(),
+    commitmentAppropriateness: z.number(),
+  }).nullable().optional(),
+});
+
+/** PATCH /api/artifacts/:id */
+export const updateArtifactBodySchema = createArtifactBodySchema.partial();
+
+/** PATCH /api/templates/:id */
+export const updateTemplateBodySchema = insertTemplateSchema.partial();
+
+/** PATCH /api/sessions/:id */
+export const updateSessionBodySchema = z.object({
+  status: z.enum(["briefing", "active", "paused", "awaiting_review", "completed"]).optional(),
+  currentStep: z.number().int().min(0).optional(),
+  currentChannel: z.enum(channelValues).optional(),
+  mode: z.enum(["practice", "assessment"]).optional(),
+  config: z.object({
+    procurementStrictness: z.boolean(),
+    complianceSensitivity: z.boolean(),
+    tickingClockPressure: z.boolean(),
+  }).optional(),
+  completedAt: z.coerce.date().nullable().optional(),
+});
+
+/** PATCH /api/assessments/:id/hitl */
+export const hitlUpdateBodySchema = z.object({
+  verdict: z.string().min(1, "Verdict is required").max(500),
+  notes: z.string().max(5000).optional(),
+});
+
+/** PATCH /api/user-config */
+export const updateUserConfigBodySchema = z.object({
+  role: z.string().min(1).max(200).optional(),
+  seniorityLevel: z.string().min(1).max(200).optional(),
+  preferredMode: z.enum(["practice", "assessment"]).optional(),
+  activeChannels: z.array(z.enum(channelValues)).optional(),
+  constraintToggles: z.object({
+    procurementStrictness: z.boolean(),
+    complianceSensitivity: z.boolean(),
+    tickingClockPressure: z.boolean(),
+  }).optional(),
+  activeTemplateIds: z.array(z.number().int().positive()).optional(),
+});
+
+/** Slug param validation */
+export const slugParamSchema = z.string().min(1).max(200).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Invalid slug format");
+
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export type Persona = typeof personas.$inferSelect;
