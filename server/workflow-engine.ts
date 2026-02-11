@@ -562,8 +562,9 @@ export async function executePersonaResponseStep(
 
   // Build a one-off workflow with a single persona-response step
   const now = new Date().toISOString();
+  const workflowId = `wf-persona-${sessionId}-${step}-${Date.now()}`;
   const oneOffWorkflow: Workflow = {
-    id: `wf-persona-${sessionId}-${step}-${Date.now()}`,
+    id: workflowId,
     accountId: BILKO_ACCOUNT_ID,
     projectId: BILKO_PROJECT_ID,
     environmentId: BILKO_ENV_ID,
@@ -578,7 +579,7 @@ export async function executePersonaResponseStep(
     steps: [
       {
         id: "persona-step",
-        workflowId: `wf-persona-${sessionId}-${step}-${Date.now()}`,
+        workflowId,
         name: "Generate Persona Response",
         type: "custom" as any,
         dependsOn: [],
@@ -633,9 +634,10 @@ export async function executeChannelTransitionStep(
 ): Promise<string> {
   const ctx = getBilkoContext();
   const now = new Date().toISOString();
+  const wfId = `wf-transition-${stepNumber}-${Date.now()}`;
 
   const workflow: Workflow = {
-    id: `wf-transition-${stepNumber}-${Date.now()}`,
+    id: wfId,
     accountId: BILKO_ACCOUNT_ID,
     projectId: BILKO_PROJECT_ID,
     environmentId: BILKO_ENV_ID,
@@ -650,7 +652,7 @@ export async function executeChannelTransitionStep(
     steps: [
       {
         id: "transition-step",
-        workflowId: `wf-transition-${stepNumber}-${Date.now()}`,
+        workflowId: wfId,
         name: "Channel Transition",
         type: "custom" as any,
         dependsOn: [],
@@ -701,9 +703,10 @@ export async function executeAssessmentStep(
   const uniqueChannels = new Set(messages.map(m => m.channel));
 
   const now = new Date().toISOString();
+  const wfId = `wf-assessment-${sessionId}-${Date.now()}`;
 
   const workflow: Workflow = {
-    id: `wf-assessment-${sessionId}-${Date.now()}`,
+    id: wfId,
     accountId: BILKO_ACCOUNT_ID,
     projectId: BILKO_PROJECT_ID,
     environmentId: BILKO_ENV_ID,
@@ -718,7 +721,7 @@ export async function executeAssessmentStep(
     steps: [
       {
         id: "assessment-step",
-        workflowId: `wf-assessment-${sessionId}-${Date.now()}`,
+        workflowId: wfId,
         name: "Generate Assessment",
         type: "custom" as any,
         dependsOn: [],
