@@ -79,7 +79,7 @@ interface Scenario {
   id: number;
   title: string;
   description: string;
-  totalSteps: number;
+  estimatedSteps: number;
   channels: string[];
   requiredArtifacts: string[];
 }
@@ -587,7 +587,7 @@ export default function PracticeSession() {
   // -----------------------------------------------------------------------
 
   const scenario = session?.scenario;
-  const totalSteps = scenario?.totalSteps ?? 1;
+  const totalSteps = scenario?.estimatedSteps ?? 1;
   const currentStep = session?.currentStep ?? 1;
   const currentChannel = session?.currentChannel ?? "email";
   const isCompleted = session?.status === "completed";
