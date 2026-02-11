@@ -86,6 +86,10 @@ export const api = {
       method: 'PATCH' as const,
       path: '/api/sessions/:id' as const,
     },
+    advance: {
+      method: 'POST' as const,
+      path: '/api/sessions/:sessionId/advance' as const,
+    },
   },
   messages: {
     list: {

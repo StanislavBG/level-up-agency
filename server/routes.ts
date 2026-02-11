@@ -11,6 +11,26 @@ import {
   getActivePersonaForStep,
   createScenarioRun,
 } from "./workflow-engine";
+import {
+  insertTemplateSchema,
+  insertSessionSchema,
+  createMessageBodySchema,
+  createArtifactBodySchema,
+  updateArtifactBodySchema,
+  updateTemplateBodySchema,
+  updateSessionBodySchema,
+  hitlUpdateBodySchema,
+  updateUserConfigBodySchema,
+  slugParamSchema,
+} from "@shared/schema";
+import { ZodError } from "zod";
+import { fromZodError } from "zod-validation-error";
+
+/** Format a ZodError into a concise 400-response payload. */
+function formatValidationError(err: ZodError) {
+  const formatted = fromZodError(err);
+  return { message: formatted.message };
+}
 
 export async function registerRoutes(
   httpServer: Server,
@@ -43,7 +63,9 @@ export async function registerRoutes(
   });
 
   app.get(api.scenarios.getBySlug.path, async (req, res) => {
-    const scenario = await storage.getScenarioBySlug(req.params.slug);
+    const slugResult = slugParamSchema.safeParse(req.params.slug);
+    if (!slugResult.success) return res.status(400).json(formatValidationError(slugResult.error));
+    const scenario = await storage.getScenarioBySlug(slugResult.data);
     if (!scenario) return res.status(404).json({ message: "Scenario not found" });
     res.json(scenario);
   });
@@ -84,23 +106,27 @@ export async function registerRoutes(
   });
 
   app.post(api.templates.create.path, async (req, res) => {
+    const parsed = insertTemplateSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json(formatValidationError(parsed.error));
     try {
-      const template = await storage.createTemplate(req.body);
+      const template = await storage.createTemplate(parsed.data);
       res.status(201).json(template);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
     }
   });
 
-  app.patch("/api/templates/:id", async (req, res) => {
+  app.patch(api.templates.update.path, async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
-    const template = await storage.updateTemplate(id, req.body);
+    const parsed = updateTemplateBodySchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json(formatValidationError(parsed.error));
+    const template = await storage.updateTemplate(id, parsed.data);
     if (!template) return res.status(404).json({ message: "Template not found" });
     res.json(template);
   });
 
-  app.delete("/api/templates/:id", async (req, res) => {
+  app.delete(api.templates.delete.path, async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
     const deleted = await storage.deleteTemplate(id);
@@ -125,8 +151,10 @@ export async function registerRoutes(
   });
 
   app.post(api.sessions.create.path, async (req, res) => {
+    const parsed = insertSessionSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json(formatValidationError(parsed.error));
     try {
-      const session = await storage.createSession(req.body);
+      const session = await storage.createSession(parsed.data);
       const scenario = await storage.getScenario(session.scenarioId);
 
       if (scenario) {
@@ -186,25 +214,30 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/sessions/:id", async (req, res) => {
+  app.patch(api.sessions.update.path, async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
-    const session = await storage.updateSession(id, req.body);
+    const parsed = updateSessionBodySchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json(formatValidationError(parsed.error));
+    const session = await storage.updateSession(id, parsed.data);
     if (!session) return res.status(404).json({ message: "Session not found" });
     res.json(session);
   });
 
   // ─── Messages (bilko-flow: persona response via custom.persona-response step handler) ─
-  app.get("/api/sessions/:sessionId/messages", async (req, res) => {
+  app.get(api.messages.list.path, async (req, res) => {
     const sessionId = parseInt(req.params.sessionId);
     if (isNaN(sessionId)) return res.status(400).json({ message: "Invalid session ID" });
     const messages = await storage.getMessages(sessionId);
     res.json(messages);
   });
 
-  app.post("/api/sessions/:sessionId/messages", async (req, res) => {
+  app.post(api.messages.create.path, async (req, res) => {
     const sessionId = parseInt(req.params.sessionId);
     if (isNaN(sessionId)) return res.status(400).json({ message: "Invalid session ID" });
+
+    const parsed = createMessageBodySchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json(formatValidationError(parsed.error));
 
     const session = await storage.getSession(sessionId);
     if (!session) return res.status(404).json({ message: "Session not found" });
@@ -216,10 +249,10 @@ export async function registerRoutes(
       // Save user message
       const userMessage = await storage.createMessage({
         sessionId,
-        channel: req.body.channel || session.currentChannel,
+        channel: parsed.data.channel || session.currentChannel,
         senderType: "user",
         senderName: "You",
-        content: req.body.content,
+        content: parsed.data.content,
         step: session.currentStep,
       });
 
@@ -241,14 +274,14 @@ export async function registerRoutes(
           scenario.id,
           activePersona.personaId,
           activePersona.persona.personaType,
-          req.body.content,
-          req.body.channel || session.currentChannel,
+          parsed.data.content,
+          parsed.data.channel || session.currentChannel,
           currentStep,
         );
 
         personaMessage = await storage.createMessage({
           sessionId,
-          channel: req.body.channel || session.currentChannel,
+          channel: parsed.data.channel || session.currentChannel,
           senderType: "persona",
           senderName: personaResult.personaName,
           personaId: activePersona.personaId,
@@ -276,7 +309,7 @@ export async function registerRoutes(
   });
 
   // ─── Advance Step (bilko-flow: channel transition via custom.channel-transition step handler) ─
-  app.post("/api/sessions/:sessionId/advance", async (req, res) => {
+  app.post(api.sessions.advance.path, async (req, res) => {
     const sessionId = parseInt(req.params.sessionId);
     if (isNaN(sessionId)) return res.status(400).json({ message: "Invalid session ID" });
 
@@ -332,19 +365,21 @@ export async function registerRoutes(
   });
 
   // ─── Artifacts ───────────────────────────────────────────────────────────
-  app.get("/api/sessions/:sessionId/artifacts", async (req, res) => {
+  app.get(api.artifacts.list.path, async (req, res) => {
     const sessionId = parseInt(req.params.sessionId);
     if (isNaN(sessionId)) return res.status(400).json({ message: "Invalid session ID" });
     const artifacts = await storage.getArtifacts(sessionId);
     res.json(artifacts);
   });
 
-  app.post("/api/sessions/:sessionId/artifacts", async (req, res) => {
+  app.post(api.artifacts.create.path, async (req, res) => {
     const sessionId = parseInt(req.params.sessionId);
     if (isNaN(sessionId)) return res.status(400).json({ message: "Invalid session ID" });
+    const parsed = createArtifactBodySchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json(formatValidationError(parsed.error));
     try {
       const artifact = await storage.createArtifact({
-        ...req.body,
+        ...parsed.data,
         sessionId,
       });
       res.status(201).json(artifact);
@@ -353,16 +388,18 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/artifacts/:id", async (req, res) => {
+  app.patch(api.artifacts.update.path, async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
-    const artifact = await storage.updateArtifact(id, req.body);
+    const parsed = updateArtifactBodySchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json(formatValidationError(parsed.error));
+    const artifact = await storage.updateArtifact(id, parsed.data);
     if (!artifact) return res.status(404).json({ message: "Artifact not found" });
     res.json(artifact);
   });
 
   // ─── Assessments (bilko-flow: scoring via custom.assessment step handler) ─
-  app.get("/api/sessions/:sessionId/assessment", async (req, res) => {
+  app.get(api.assessments.get.path, async (req, res) => {
     const sessionId = parseInt(req.params.sessionId);
     if (isNaN(sessionId)) return res.status(400).json({ message: "Invalid session ID" });
     const assessment = await storage.getAssessment(sessionId);
@@ -370,7 +407,7 @@ export async function registerRoutes(
     res.json(assessment);
   });
 
-  app.post("/api/sessions/:sessionId/assessment", async (req, res) => {
+  app.post(api.assessments.create.path, async (req, res) => {
     const sessionId = parseInt(req.params.sessionId);
     if (isNaN(sessionId)) return res.status(400).json({ message: "Invalid session ID" });
 
@@ -403,12 +440,14 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/assessments/:id/hitl", async (req, res) => {
+  app.patch(api.assessments.updateHitl.path, async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const parsed = hitlUpdateBodySchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json(formatValidationError(parsed.error));
     const assessment = await storage.updateAssessment(id, {
-      hitlVerdict: req.body.verdict,
-      hitlNotes: req.body.notes,
+      hitlVerdict: parsed.data.verdict,
+      hitlNotes: parsed.data.notes,
     });
     if (!assessment) return res.status(404).json({ message: "Assessment not found" });
     res.json(assessment);
@@ -424,8 +463,10 @@ export async function registerRoutes(
   });
 
   app.patch(api.userConfig.update.path, async (req, res) => {
+    const parsed = updateUserConfigBodySchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json(formatValidationError(parsed.error));
     try {
-      const config = await storage.upsertUserConfig(req.body);
+      const config = await storage.upsertUserConfig(parsed.data);
       res.json(config);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
